@@ -1,0 +1,142 @@
+/* ==========================================================================
+   RoadPulse design tokens — "Civic Instrument"
+   A light, engineered surface: warm paper, municipal ink, one hi-vis accent.
+   ========================================================================== */
+
+:root {
+  /* surfaces */
+  --paper:        #f5f4f0;
+  --paper-2:      #eeece5;
+  --surface:      #ffffff;
+  --surface-2:    #faf9f6;
+  --border:       #e3e0d7;
+  --border-strong:#d2cec2;
+
+  /* ink */
+  --ink:          #17181a;
+  --ink-2:        #3d3f42;
+  --muted:        #6f6e69;
+  --faint:        #9a988f;
+
+  /* brand */
+  --brand:        #123a5e;
+  --brand-2:      #1b5285;
+  --brand-soft:   #e8eef5;
+  --accent:       #e8590c;
+  --accent-soft:  #fdeee4;
+
+  /* status */
+  --critical:     #c92a2a;
+  --critical-soft:#fbeaea;
+  --high:         #e8590c;
+  --high-soft:    #fdeee4;
+  --medium:       #b8860b;
+  --medium-soft:  #fbf3dd;
+  --low:          #2f9e44;
+  --low-soft:     #e9f7ec;
+  --chronic:      #6741d9;
+  --chronic-soft: #f0ecfd;
+  --monsoon:      #0c7bb3;
+  --monsoon-soft: #e6f4fb;
+  --good:         #2f9e44;
+  --fair:         #b8860b;
+  --poor:         #c92a2a;
+
+  /* type */
+  --font-display: 'Archivo', 'Segoe UI', sans-serif;
+  --font-body:    'IBM Plex Sans', 'Segoe UI', sans-serif;
+  --font-mono:    'IBM Plex Mono', ui-monospace, 'SFMono-Regular', monospace;
+
+  /* geometry */
+  --r-sm: 5px;
+  --r:    8px;
+  --r-lg: 12px;
+  --sidebar-w: 250px;
+  --shadow-sm: 0 1px 2px rgba(23, 24, 26, 0.05);
+  --shadow:    0 4px 16px -6px rgba(23, 24, 26, 0.14);
+  --shadow-lg: 0 24px 60px -24px rgba(23, 24, 26, 0.3);
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Faint engineering grid — atmosphere without noise. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image:
+    linear-gradient(to right, rgba(23, 24, 26, 0.028) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(23, 24, 26, 0.028) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse 100% 70% at 50% 0%, #000 30%, transparent 100%);
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.018em;
+  margin: 0;
+  color: var(--ink);
+}
+
+h1 { font-size: 26px; font-weight: 800; }
+h2 { font-size: 19px; }
+h3 { font-size: 16px; }
+h4 { font-size: 14px; }
+
+p { margin: 0; }
+
+a { color: var(--brand-2); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+button, input, select, textarea { font: inherit; color: inherit; }
+
+/* numeric / code surfaces */
+.mono, .num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+::selection { background: var(--accent-soft); }
+
+/* scrollbars */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 20px;
+  border: 3px solid var(--paper);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--faint); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
