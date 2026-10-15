@@ -96,7 +96,7 @@ const HISTORY_POINTS = [90, 75, 60, 45, 30, 21, 14, 7];
  * degradation curve instead of a synthetic one.
  */
 function backfillHistory() {
-  const detections = query('SELECT * FROM detections ORDER BY id');
+  const detections = query("SELECT * FROM detections WHERE status = 'Verified' ORDER BY id");
   const segments = query('SELECT * FROM road_segments'); // DB rows: nearestSegment needs column names
   if (!detections.length) return 0;
 
@@ -151,15 +151,52 @@ async function main() {
   for (const s of SEGMENTS) insSeg.run(...s);
   console.log(`  ✓ ${SEGMENTS.length} corridors across 5 zones`);
 
-  /* 3 — fleet observations */
+  /* 3 — reports: dashcam frames (automatic) + citizen app uploads */
   const insDet = db.prepare(
     `INSERT INTO detections
-       (timestamp, vehicle_id, latitude, longitude, damage_class, confidence, bbox_area_ratio,
-        street_name, zone_name, road_type, segment_id, source, status)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
+       (timestamp, vehicle_id, latitude, longitude, location_name, damage_class, confidence,
+        bbox_area_ratio, street_name, zone_name, road_type, segment_id, source, status)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   );
 
+  const CITIZENS = ['CITIZEN-4412', 'CITIZEN-7781', 'CITIZEN-1290', 'CITIZEN-3355', 'CITIZEN-9024'];
+
+  /**
+   * Landmarks citizens actually navigate by. A person reporting a pothole says
+   * "near PSG Hospitals", not "on segment SEG_AVINASHI_02" — so citizen reports
+   * carry a landmark name while dashcam frames carry the corridor name.
+   */
+  const LANDMARKS = {
+    'East Zone': ['PSG Hospitals', 'Coimbatore Airport', 'SITRA', 'Hope College'],
+    'Central Zone': ['Gandhipuram Bus Stand', 'Town Hall', 'RS Puram', 'Cross Cut Road'],
+    'North Zone': ['Saibaba Colony', 'Ganapathy', 'Thudiyalur', 'Sathy Road Junction'],
+    'South Zone': ['Singanallur Junction', 'Ukkadam', 'Eachanari', 'Ondipudur'],
+  };
+
+  /** The human-readable name attached to a report — never just a coordinate. */
+  function locationNameFor(street, zone, citizen) {
+    if (citizen) {
+      const marks = LANDMARKS[zone] || [];
+      const mark = marks.length ? marks[Math.floor(rand() * marks.length)] : null;
+      return mark ? `Near ${mark}, ${street}` : `${street}, ${zone}`;
+    }
+    return `${street}, ${zone}`;
+  }
+
+  /**
+   * Confidence follows the verification tier, so the data is self-consistent:
+   * accepted reports are confident, queued ones sit in the 0.60–0.84 band, and
+   * rejected ones were plausible-but-wrong.
+   */
+  function confidenceFor(status, citizen) {
+    if (status === 'Verified') return Number(between(0.86, 0.98).toFixed(2));
+    if (status === 'Rejected') return Number(between(0.6, 0.74).toFixed(2));
+    return Number(between(citizen ? 0.6 : 0.62, 0.84).toFixed(2));
+  }
+
   let detections = 0;
+  let citizenReports = 0;
+  let dashcamReports = 0;
   const JITTER = 0.000028; // ≈ ±3 m — inside the 5 m clustering radius
 
   for (const [si, t, dom, sightings, span] of DEFECT_SITES) {
@@ -167,44 +204,61 @@ async function main() {
     const lat = lerp(s[3], s[5], t);
     const lon = lerp(s[4], s[6], t);
 
+    // A genuine defect is mostly auto-accepted; the remainder waits for an officer.
+    const verifiedCount = sightings >= 3 ? Math.max(2, Math.round(sightings * 0.78)) : 1;
+
     for (let i = 0; i < sightings; i++) {
       // Oldest sighting first, newest within the last few days.
       const progress = i / Math.max(1, sightings - 1);
       const daysAgo = Math.max(0.2, span * (1 - progress) + between(-2, 2));
       const cls = rand() < 0.8 ? dom : pick(CLASS_MIX);
+
+      const status = i < verifiedCount
+        ? 'Verified'
+        : rand() < 0.74 ? 'Pending' : 'Rejected';
+
+      const citizen = rand() < 0.34;
+      if (citizen) citizenReports++; else dashcamReports++;
+
       insDet.run(
         stamp(daysAgo, Math.floor(between(6, 21))),
-        pick(VEHICLES),
+        citizen ? pick(CITIZENS) : pick(VEHICLES),
         Number((lat + between(-JITTER, JITTER)).toFixed(6)),
         Number((lon + between(-JITTER, JITTER)).toFixed(6)),
+        locationNameFor(s[1], s[2], citizen),
         cls,
-        Number(between(0.62, 0.97).toFixed(2)),
+        confidenceFor(status, citizen),
         Number((cls === 'pothole' ? between(0.07, 0.16) : cls === 'alligator_crack' ? between(0.09, 0.19) : between(0.02, 0.06)).toFixed(3)),
-        s[1], s[2], s[7], s[0], 'edge',
-        i < sightings - 1 ? pick(['Verified', 'Dispatched']) : 'Pending'
+        s[1], s[2], s[7], s[0], citizen ? 'citizen' : 'dashcam',
+        status
       );
       detections++;
     }
   }
 
-  // Loose one-off observations — the long tail that has not clustered yet.
+  // Loose one-off reports — the long tail that has not clustered into a defect yet.
   for (let i = 0; i < 45; i++) {
     const s = pick(SEGMENTS);
     const t = between(0.05, 0.95);
+    const citizen = rand() < 0.5;
+    const status = rand() < 0.45 ? 'Verified' : rand() < 0.82 ? 'Pending' : 'Rejected';
+    if (citizen) citizenReports++; else dashcamReports++;
+
     insDet.run(
       stamp(between(0.5, 100), Math.floor(between(6, 21))),
-      pick(VEHICLES),
+      citizen ? pick(CITIZENS) : pick(VEHICLES),
       Number((lerp(s[3], s[5], t) + between(-0.0009, 0.0009)).toFixed(6)),
       Number((lerp(s[4], s[6], t) + between(-0.0009, 0.0009)).toFixed(6)),
+      locationNameFor(s[1], s[2], citizen),
       pick(CLASS_MIX),
-      Number(between(0.61, 0.94).toFixed(2)),
+      confidenceFor(status, citizen),
       Number(between(0.02, 0.11).toFixed(3)),
-      s[1], s[2], s[7], s[0], 'edge',
-      pick(['Pending', 'Pending', 'Verified'])
+      s[1], s[2], s[7], s[0], citizen ? 'citizen' : 'dashcam',
+      status
     );
     detections++;
   }
-  console.log(`  ✓ ${detections} fleet observations over 180 days`);
+  console.log(`  ✓ ${detections} reports over 180 days (${dashcamReports} dashcam · ${citizenReports} citizen)`);
 
   /* 4 — cluster into hotspots via the live DBSCAN path */
   const clustered = rebuildHotspots();
@@ -246,7 +300,7 @@ async function main() {
   /* 8 — governance trail */
   audit({
     userId: userIds.executive, userEmail: 'executive@cmc.gov.in', action: 'system.seed',
-    entity: 'database', detail: `Seeded ${SEGMENTS.length} corridors and ${detections} observations`,
+    entity: 'database', detail: `Seeded ${SEGMENTS.length} corridors and ${detections} reports`,
   });
   audit({
     userId: userIds.inspector, userEmail: 'inspector@cmc.gov.in', action: 'detection.review',
@@ -256,6 +310,10 @@ async function main() {
   const summary = one(`SELECT
       (SELECT COUNT(*) FROM road_segments)                         AS segments,
       (SELECT COUNT(*) FROM detections)                            AS detections,
+      (SELECT COUNT(*) FROM detections WHERE status = 'Pending')   AS pending,
+      (SELECT COUNT(*) FROM detections WHERE status = 'Verified')  AS verified,
+      (SELECT COUNT(*) FROM detections WHERE source = 'citizen')   AS citizen,
+      (SELECT COUNT(*) FROM detections WHERE source = 'dashcam')   AS dashcam,
       (SELECT COUNT(*) FROM chronic_hotspots)                      AS hotspots,
       (SELECT COUNT(*) FROM chronic_hotspots WHERE is_chronic = 1) AS chronic,
       (SELECT COUNT(*) FROM chronic_hotspots WHERE priority_score > 35) AS critical,
@@ -263,7 +321,8 @@ async function main() {
 
   console.log('\n  ─────────────────────────────────────────────');
   console.log(`   corridors      ${summary.segments}`);
-  console.log(`   detections     ${summary.detections}`);
+  console.log(`   reports        ${summary.detections}  (${summary.dashcam} dashcam · ${summary.citizen} citizen)`);
+  console.log(`   verification   ${summary.verified} verified · ${summary.pending} pending review`);
   console.log(`   hotspots       ${summary.hotspots}  (${summary.chronic} chronic · ${summary.critical} critical)`);
   console.log(`   work orders    ${summary.workOrders}`);
   console.log(`   avg city PCI   ${pci.avg}/100`);

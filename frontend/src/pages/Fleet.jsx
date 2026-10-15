@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Activity, Cpu, Pause, Play, Radio, RefreshCw, Truck, Zap } from 'lucide-react';
+import { Activity, Camera, Cpu, Pause, Play, Radio, RefreshCw, Smartphone, Truck, Zap } from 'lucide-react';
 import { dataApi } from '../lib/api.js';
 import { useLiveFeed, usePoll } from '../lib/hooks.js';
 import { CLASS_LABEL, clockOf, num, relTime } from '../lib/format.js';
@@ -14,6 +14,14 @@ const INTERVALS = [
   { label: 'Slow · 20 s', value: 20000 },
 ];
 
+const SOURCE_META = {
+  citizen: { label: 'Citizen app', icon: Smartphone, tone: 'brand', note: 'Manual uploads with a photo' },
+  dashcam: { label: 'Dashcam', icon: Camera, tone: 'chronic', note: 'Automatic frames from fleet vehicles' },
+  simulator: { label: 'Dashcam (sim)', icon: Camera, tone: 'neutral', note: 'Replayed fleet stream' },
+  edge: { label: 'Edge device', icon: Camera, tone: 'neutral', note: 'Direct sensor feed' },
+  manual: { label: 'Manual entry', icon: Smartphone, tone: 'brand', note: 'Operator keyed in' },
+};
+
 export default function Fleet() {
   const toast = useToast();
   const { isExecutive, can } = useAuth();
@@ -23,10 +31,14 @@ export default function Fleet() {
   const { data: fleet, loading } = usePoll(() => dataApi.fleet(), 12000, []);
   const { data: analytics } = usePoll(() => dataApi.fleetAnalytics(), 30000, []);
   const { data: recent } = usePoll(() => dataApi.detections('?limit=40'), 15000, []);
+  const { data: reportSummary } = usePoll(() => dataApi.reportsSummary(), 20000, []);
   const live = useLiveFeed({ limit: 60, enabled: true });
 
   const sim = fleet?.simulator;
   const running = sim?.running;
+
+  const statusCounts = reportSummary?.status || { total: 0, Verified: 0, Pending: 0, Rejected: 0 };
+  const sourceCounts = reportSummary?.sources || [];
 
   const control = async (action) => {
     setBusy(action);
@@ -107,6 +119,83 @@ export default function Fleet() {
           accent="var(--low)"
           foot={`${fleet?.roster?.length || 0} vehicles in the fleet`}
         />
+      </div>
+
+      <div className="grid grid--2">
+        <Card flush title="Report sources" eyebrow="How reports reach the platform">
+          {sourceCounts.length ? (
+            <Table
+              rowKey={(s) => s.source}
+              columns={[
+                {
+                  key: 'source',
+                  header: 'Source',
+                  render: (s) => {
+                    const meta = SOURCE_META[s.source] || { label: s.source, icon: Radio };
+                    const Icon = meta.icon;
+                    return (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                        <Icon size={15} style={{ color: 'var(--faint)' }} />
+                        <div>
+                          <div className="t-strong" style={{ fontSize: 12.5 }}>{meta.label}</div>
+                          <div className="t-sub">{meta.note}</div>
+                        </div>
+                      </div>
+                    );
+                  },
+                },
+                { key: 'count', header: 'Reports', align: 'right', render: (s) => num(s.count) },
+                {
+                  key: 'share',
+                  header: 'Share',
+                  align: 'right',
+                  render: (s) => (
+                    <span className="mono" style={{ fontSize: 11, color: 'var(--muted)' }}>
+                      {statusCounts.total ? `${Math.round((s.count / statusCounts.total) * 100)}%` : '—'}
+                    </span>
+                  ),
+                },
+              ]}
+              rows={sourceCounts}
+            />
+          ) : (
+            <Empty icon={Radio} title="No reports yet" />
+          )}
+        </Card>
+
+        <Card flush title="Verification state" eyebrow="Confidence routing">
+          <div className="kv" style={{ padding: '14px 16px' }}>
+            <div className="kv__row">
+              <span className="kv__k" style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                <span className="report-strip__dot" style={{ background: '#2f9e44' }} /> Verified
+              </span>
+              <span className="kv__v mono">{num(statusCounts.Verified)}</span>
+            </div>
+            <div className="kv__row">
+              <span className="kv__k" style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                <span className="report-strip__dot" style={{ background: '#e8590c' }} /> Pending review
+              </span>
+              <span className="kv__v mono">{num(statusCounts.Pending)}</span>
+            </div>
+            <div className="kv__row">
+              <span className="kv__k" style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                <span className="report-strip__dot" style={{ background: '#c92a2a' }} /> Rejected
+              </span>
+              <span className="kv__v mono">{num(statusCounts.Rejected)}</span>
+            </div>
+            <div className="kv__row" style={{ borderTop: '1px solid var(--border)', paddingTop: 10, marginTop: 4 }}>
+              <span className="kv__k">Total reports</span>
+              <span className="kv__v mono">{num(statusCounts.total)}</span>
+            </div>
+          </div>
+          <div style={{ padding: '0 16px 16px' }}>
+            <Banner tone="info" icon={Cpu}>
+              Reports at <b>85%+ confidence</b> are accepted automatically. Anything between the 60% gate and
+              that is held <b>Pending</b> until a field officer accepts it on the Report Map or Triage queue.
+              Frames below 60% are discarded as noise.
+            </Banner>
+          </div>
+        </Card>
       </div>
 
       <div className="grid grid--side">
@@ -278,12 +367,16 @@ export default function Fleet() {
               { key: 'vehicle_id', header: 'Vehicle', render: (d) => <span className="mono" style={{ fontSize: 11.5 }}>{d.vehicle_id}</span> },
               { key: 'damage_class', header: 'Defect', render: (d) => CLASS_LABEL[d.damage_class] || d.damage_class },
               {
-                key: 'street_name',
+                key: 'location_name',
                 header: 'Location',
                 render: (d) => (
                   <div>
-                    <div style={{ fontSize: 12.5 }}>{d.street_name}</div>
-                    <div className="t-sub">{d.zone_name}</div>
+                    <div style={{ fontSize: 12.5 }}>{d.location_name || d.street_name}</div>
+                    <div className="t-sub">
+                      {d.location_name && d.street_name && d.location_name !== d.street_name
+                        ? `${d.street_name} · ${d.zone_name}`
+                        : d.zone_name}
+                    </div>
                   </div>
                 ),
               },
@@ -313,8 +406,8 @@ export default function Fleet() {
 
       {!can('detections:ingest') && (
         <Banner tone="info" icon={Truck}>
-          Your role can view fleet telemetry but not post observations. Drivers and executives hold the ingestion
-          capability.
+          Your role monitors fleet telemetry but does not post observations. Road reports are filed by citizens and
+          drivers from the Report screen.
         </Banner>
       )}
     </>

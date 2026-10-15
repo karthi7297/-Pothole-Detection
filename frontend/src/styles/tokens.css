@@ -60,6 +60,7 @@
 * { box-sizing: border-box; }
 
 html, body, #root { height: 100%; }
+html { overflow-x: clip; -webkit-text-size-adjust: 100%; }
 
 body {
   margin: 0;
@@ -71,6 +72,8 @@ body {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
+
+img, video { max-width: 100%; height: auto; }
 
 /* Faint engineering grid — atmosphere without noise. */
 body::before {

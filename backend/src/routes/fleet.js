@@ -5,6 +5,7 @@ import { httpError } from '../middleware/error.js';
 import { audit } from '../services/audit.js';
 import { detectionsLast24h } from '../services/ingest.js';
 import { fleetRoster, startSimulator, status, stopSimulator, tick } from '../services/simulator.js';
+import { fleetStatus, geofences, positions, vehicleSummary } from '../services/vehicles.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -15,7 +16,24 @@ router.get('/fleet', requireCapability('fleet:read'), (_req, res) => {
     roster: fleetRoster(),
     detections24h: detectionsLast24h(),
     simulator: status(),
+    tracking: fleetStatus(),
   });
+});
+
+/** Live vehicle positions with heading, speed and trip-history tracks. */
+router.get('/fleet/positions', requireCapability('fleet:read'), (_req, res) => {
+  res.json({
+    vehicles: positions(),
+    summary: vehicleSummary(),
+    tracking: fleetStatus(),
+    geofences: geofences(),
+    generatedAt: new Date().toISOString(),
+  });
+});
+
+/** Zone geofence polygons (convex hulls of each zone's assets). */
+router.get('/fleet/geofences', requireCapability('fleet:read'), (_req, res) => {
+  res.json(geofences());
 });
 
 const controlSchema = z.object({

@@ -1,5 +1,8 @@
 import express from 'express';
 import cors from 'cors';
+import path from 'node:path';
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { CORS_ORIGIN, ENABLE_SIMULATOR, NODE_ENV, PORT } from './config.js';
 import { initSchema } from './db.js';
 import { errorHandler, notFound } from './middleware/error.js';
@@ -8,6 +11,7 @@ import { rateLimit } from './middleware/rateLimit.js';
 import api from './routes/index.js';
 import { startHeartbeat } from './services/events.js';
 import { startSimulator } from './services/simulator.js';
+import { initVehicles } from './services/vehicles.js';
 
 initSchema();
 
@@ -18,6 +22,11 @@ app.use(cors({ origin: CORS_ORIGIN, credentials: true }));
 app.use(express.json({ limit: '256kb' }));
 app.use(requestLogger);
 app.use(rateLimit({ windowMs: 60_000, max: 900 }));
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const uploadDir = path.resolve(here, '../uploads');
+fs.mkdirSync(uploadDir, { recursive: true });
+app.use('/uploads', express.static(uploadDir, { maxAge: '7d' }));
 
 app.use('/api', api);
 
@@ -37,6 +46,7 @@ const server = app.listen(PORT, () => {
 });
 
 if (ENABLE_SIMULATOR) startSimulator();
+initVehicles();
 
 for (const signal of ['SIGINT', 'SIGTERM']) {
   process.on(signal, () => {

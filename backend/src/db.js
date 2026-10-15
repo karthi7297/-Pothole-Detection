@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS detections (
   vehicle_id      TEXT NOT NULL,
   latitude        REAL NOT NULL,
   longitude       REAL NOT NULL,
+  location_name   TEXT,
   damage_class    TEXT NOT NULL,
   confidence      REAL NOT NULL,
   bbox_area_ratio REAL NOT NULL,
@@ -133,8 +134,27 @@ CREATE TABLE IF NOT EXISTS audit_log (
 CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_log(created_at DESC);
 `;
 
+/**
+ * Columns added after the first release. `CREATE TABLE IF NOT EXISTS` never
+ * alters an existing table, so each new column is applied here idempotently —
+ * an old `roadpulse.db` upgrades in place without a re-seed.
+ */
+const ADDED_COLUMNS = [
+  { table: 'detections', column: 'location_name', ddl: 'TEXT' },
+];
+
+function applyMigrations() {
+  for (const { table, column, ddl } of ADDED_COLUMNS) {
+    const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+    if (!cols.some((c) => c.name === column)) {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
+    }
+  }
+}
+
 export function initSchema() {
   db.exec(SCHEMA);
+  applyMigrations();
 }
 
 /** Wipes every table — used by the seed script only. */

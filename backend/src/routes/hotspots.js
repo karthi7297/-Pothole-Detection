@@ -10,16 +10,19 @@ import { priorityIndex, gradeOf } from '../services/priority.js';
 const router = Router();
 router.use(requireAuth);
 
-const decorate = (h) => ({
-  ...h,
-  is_chronic: !!h.is_chronic,
-  monsoon_inundation_risk: !!h.monsoon_inundation_risk,
-  grade: gradeOf(h.priority_score),
-  priority_index: priorityIndex(h.priority_score),
-});
+/**
+ * Enrich a stored hotspot row with its derived presentation fields.
+ * Grade and the 0–100 priority index are both functions of priority_score,
+ * so they are computed on read rather than stored.
+ */
+const decorate = (row) => {
+  if (!row) return row;
+  const score = Number(row.priority_score) || 0;
+  return { ...row, grade: gradeOf(score), priority_index: priorityIndex(score) };
+};
 
-/** Filterable, sortable triage queue. */
-router.get('/hotspots', (req, res) => {
+/** List hotspots — inspectors and executives. */
+router.get('/hotspots', requireCapability('hotspots:read'), (req, res) => {
   const { q, grade, zone, chronic, monsoon, status, sort = 'priority', limit } = req.query;
   let rows = query('SELECT * FROM chronic_hotspots').map(decorate);
 
@@ -51,7 +54,7 @@ router.get('/hotspots', (req, res) => {
   res.json({ total: rows.length, items: rows });
 });
 
-router.get('/hotspots/:id', (req, res, next) => {
+router.get('/hotspots/:id', requireCapability('hotspots:read'), (req, res, next) => {
   const hotspot = one('SELECT * FROM chronic_hotspots WHERE hotspot_id = ?', [req.params.id]);
   if (!hotspot) return next(httpError(404, 'Hotspot not found.', 'HOTSPOT_NOT_FOUND'));
   const detections = query(
@@ -65,19 +68,24 @@ router.get('/hotspots/:id', (req, res, next) => {
   res.json({ ...decorate(hotspot), detections, workOrders });
 });
 
-const patchSchema = z.object({
-  status: z.enum(['Active', 'Verified', 'Rejected', 'Dispatched', 'Repaired']).optional(),
+const inspectorPatchSchema = z.object({
+  status: z.enum(['Verified', 'Rejected', 'Dispatched']).optional(),
   assigned_ward_office: z.string().trim().max(120).optional(),
 });
 
-/** Inspector verification / executive dispatch. */
+/** Inspector verification / dispatch: Active → Verified/Rejected/Dispatched */
 router.patch('/hotspots/:id', requireCapability('hotspots:verify'), (req, res, next) => {
-  const parsed = patchSchema.safeParse(req.body);
+  const parsed = inspectorPatchSchema.safeParse(req.body);
   if (!parsed.success) {
-    return next(httpError(400, 'Invalid hotspot update.', 'VALIDATION_ERROR', parsed.error.flatten().fieldErrors));
+    return next(httpError(400, 'Invalid hotspot update. Allowed: Verified, Rejected, Dispatched', 'VALIDATION_ERROR', parsed.error.flatten().fieldErrors));
   }
   const existing = one('SELECT * FROM chronic_hotspots WHERE hotspot_id = ?', [req.params.id]);
   if (!existing) return next(httpError(404, 'Hotspot not found.', 'HOTSPOT_NOT_FOUND'));
+
+  const allowedFrom = ['Active', 'Verified'];
+  if (!allowedFrom.includes(existing.status)) {
+    return next(httpError(400, `Cannot change status from "${existing.status}".`, 'INVALID_TRANSITION'));
+  }
 
   const { status, assigned_ward_office } = parsed.data;
   run(
@@ -91,7 +99,7 @@ router.patch('/hotspots/:id', requireCapability('hotspots:verify'), (req, res, n
   audit({
     userId: req.user.id,
     userEmail: req.user.email,
-    action: 'hotspot.update',
+    action: 'hotspot.update.inspector',
     entity: 'hotspot',
     entityId: req.params.id,
     detail: [status && `status=${status}`, assigned_ward_office && `ward=${assigned_ward_office}`]
@@ -102,6 +110,50 @@ router.patch('/hotspots/:id', requireCapability('hotspots:verify'), (req, res, n
   const updated = decorate(one('SELECT * FROM chronic_hotspots WHERE hotspot_id = ?', [req.params.id]));
   broadcast('hotspot', updated);
   res.json(updated);
+});
+
+/** Field officer: create a hotspot manually. */
+const createHotspotSchema = z.object({
+  center_lat: z.number().gte(-90).lte(90),
+  center_lon: z.number().gte(-180).lte(180),
+  street_name: z.string().trim().min(2).max(120),
+  zone_name: z.string().trim().max(80).optional(),
+  road_type: z.enum(['Arterial', 'Collector', 'Residential']).optional(),
+  segment_id: z.string().optional(),
+  radius_meters: z.number().positive().optional(),
+});
+router.post('/hotspots', requireCapability('hotspots:manage'), (req, res, next) => {
+  const parsed = createHotspotSchema.safeParse(req.body);
+  if (!parsed.success) return next(httpError(400, 'Invalid hotspot data.', 'VALIDATION_ERROR', parsed.error.flatten().fieldErrors));
+
+  const info = run(
+    `INSERT INTO chronic_hotspots
+       (center_lat, center_lon, street_name, zone_name, road_type, segment_id, radius_meters, detection_count, is_chronic, priority_score, dominant_class, first_detected_at, last_detected_at)
+     VALUES (?,?,?,?,?,?,?,0,0,0,'pothole',datetime('now'),datetime('now'))`,
+    [
+      parsed.data.center_lat, parsed.data.center_lon,
+      parsed.data.street_name,
+      parsed.data.zone_name || 'Central Zone',
+      parsed.data.road_type || 'Arterial',
+      parsed.data.segment_id || null,
+      parsed.data.radius_meters || 5,
+    ]
+  );
+  const hotspot = decorate(one('SELECT * FROM chronic_hotspots WHERE hotspot_id = ?', [info.lastInsertRowid]));
+  audit({ userId: req.user.id, userEmail: req.user.email, action: 'hotspot.create', entity: 'hotspot', entityId: hotspot.hotspot_id });
+  broadcast('hotspot', hotspot);
+  res.status(201).json(hotspot);
+});
+
+/** Field officer: delete hotspot. */
+router.delete('/hotspots/:id', requireCapability('hotspots:manage'), (req, res, next) => {
+  const existing = one('SELECT * FROM chronic_hotspots WHERE hotspot_id = ?', [req.params.id]);
+  if (!existing) return next(httpError(404, 'Hotspot not found.', 'HOTSPOT_NOT_FOUND'));
+  run('DELETE FROM chronic_hotspots WHERE hotspot_id = ?', [req.params.id]);
+  run('UPDATE detections SET hotspot_id = NULL WHERE hotspot_id = ?', [req.params.id]);
+  audit({ userId: req.user.id, userEmail: req.user.email, action: 'hotspot.delete', entity: 'hotspot', entityId: req.params.id });
+  broadcast('hotspot:deleted', { hotspot_id: Number(req.params.id) });
+  res.status(204).send();
 });
 
 export default router;

@@ -30,7 +30,7 @@ function segmentIdFor(lat, lon, segments) {
 function reportCountNear(lat, lon, hours = CHRONIC_WINDOW_DAYS * 24, radius = DEDUP_RADIUS_M) {
   const since = new Date(Date.now() - hours * 3_600_000).toISOString().slice(0, 19).replace('T', ' ');
   const rows = query(
-    'SELECT vehicle_id, latitude, longitude FROM detections WHERE timestamp >= ?',
+    "SELECT vehicle_id, latitude, longitude FROM detections WHERE timestamp >= ? AND status = 'Verified'",
     [since]
   );
   const vehicles = new Set();
@@ -68,7 +68,8 @@ function findHotspotNear(lat, lon, radius = DEDUP_RADIUS_M * 1.6) {
  * Called on every ingestion so the map updates in real time.
  */
 export function refreshHotspot(hotspotId) {
-  const members = query('SELECT * FROM detections WHERE hotspot_id = ?', [hotspotId]);
+  // Only accepted reports shape a defect — Pending ones await an officer.
+  const members = query("SELECT * FROM detections WHERE hotspot_id = ? AND status = 'Verified'", [hotspotId]);
   if (!members.length) {
     run('DELETE FROM chronic_hotspots WHERE hotspot_id = ?', [hotspotId]);
     return null;
@@ -109,7 +110,7 @@ export function refreshHotspot(hotspotId) {
 export function rebuildHotspots() {
   const since = new Date(Date.now() - CHRONIC_WINDOW_DAYS * 86_400_000)
     .toISOString().slice(0, 19).replace('T', ' ');
-  const rows = query('SELECT * FROM detections WHERE timestamp >= ? ORDER BY id', [since]);
+  const rows = query("SELECT * FROM detections WHERE timestamp >= ? AND status = 'Verified' ORDER BY id", [since]);
   if (!rows.length) return { clusters: 0, hotspots: 0 };
 
   const { clusters } = dbscan(rows, { epsMeters: DEDUP_RADIUS_M, minSamples: HOTSPOT_MIN_OBSERVATIONS });
@@ -176,7 +177,7 @@ export function rebuildHotspots() {
     // Drop hotspots that no longer have any supporting detections.
     for (const h of existing) {
       if (claimed.has(h.hotspot_id)) continue;
-      const live = one('SELECT COUNT(*) AS c FROM detections WHERE hotspot_id = ?', [h.hotspot_id]);
+      const live = one("SELECT COUNT(*) AS c FROM detections WHERE hotspot_id = ? AND status = 'Verified'", [h.hotspot_id]);
       if (!live || live.c === 0) run('DELETE FROM chronic_hotspots WHERE hotspot_id = ?', [h.hotspot_id]);
     }
 

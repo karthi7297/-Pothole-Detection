@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { API_BASE, getToken } from '../lib/api.js';
 
 /**
@@ -72,6 +72,7 @@ export function usePoll(loader, intervalMs = 15000, deps = []) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [nonce, setNonce] = useState(0);
 
   useEffect(() => {
     let alive = true;
@@ -97,7 +98,10 @@ export function usePoll(loader, intervalMs = 15000, deps = []) {
       clearInterval(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
+  }, [...deps, nonce]);
 
-  return { data, error, loading };
+  /** Force an immediate re-fetch — call after a mutation. */
+  const refresh = useCallback(() => setNonce((n) => n + 1), []);
+
+  return { data, error, loading, refresh };
 }

@@ -33,7 +33,7 @@ export default function HotspotDrawer({ hotspot, detail, loading, onClose, onLoc
               >
                 {h.status === 'Dispatched' ? 'Reopen' : 'Approve & dispatch'}
               </Button>
-              <Button variant="primary" icon={TrendingUp} onClick={() => onGenerate(h)} style={{ marginLeft: 'auto' }}>
+              <Button variant="primary" icon={TrendingUp} onClick={() => onGenerate(h)}>
                 Generate work order
               </Button>
             </>

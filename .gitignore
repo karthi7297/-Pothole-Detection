@@ -7,5 +7,8 @@ backend/.env
 frontend/.env
 # db (local sqlite — recreate with npm run seed)
 backend/roadpulse.db
+# user uploads (photos / dashcam clips)
+backend/uploads/
+uploads/
 # logs
 *.log

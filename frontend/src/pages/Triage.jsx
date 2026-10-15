@@ -104,7 +104,7 @@ export default function Triage() {
         eyebrow={`${rows.length} records`}
         actions={
           <div className="toolbar">
-            <select className="select" value={sort} onChange={(e) => setSort(e.target.value)} style={{ width: 150 }}>
+            <select className="select" value={sort} onChange={(e) => setSort(e.target.value)}>
               <option value="priority">Sort: priority</option>
               <option value="reports">Sort: sightings</option>
               <option value="recent">Sort: most recent</option>
@@ -131,7 +131,7 @@ export default function Triage() {
               </Chip>
             ))}
             <span style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 3px' }} />
-            <select className="select" value={status} onChange={(e) => setStatus(e.target.value)} style={{ width: 150 }}>
+            <select className="select" value={status} onChange={(e) => setStatus(e.target.value)}>
               <option value="">Any status</option>
               {STATUSES.map((s) => (
                 <option key={s} value={s}>{s}</option>
@@ -214,8 +214,8 @@ export default function Triage() {
 
       {!can('hotspots:verify') && (
         <Banner tone="info" icon={TriangleAlert}>
-          Your role has read-only access to the triage queue. Verification and dispatch need the{' '}
-          <b>Field Inspector</b> or <b>Municipal Executive</b> role.
+          You have read-only access to the triage queue. Verifying and dispatching defects is a{' '}
+          <b>Field Inspector</b> action.
         </Banner>
       )}
 

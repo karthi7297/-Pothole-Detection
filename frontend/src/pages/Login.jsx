@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Activity, ArrowRight, KeyRound, Loader2, Mail, ShieldCheck } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Activity, ArrowRight, Camera, KeyRound, Loader2, Mail, ShieldCheck } from 'lucide-react';
 import { DEMO_ACCOUNTS, ROLE_LABEL, useAuth } from '../state/AuthContext.jsx';
 import { Button, Field, useToast } from '../components/ui.jsx';
 
@@ -59,7 +59,7 @@ export default function Login() {
           </div>
         </div>
 
-        <div>
+        <div className="login__pitch">
           <h2>Every city bus is a road inspector.</h2>
           <p>
             RoadPulse turns the existing TNSTC and CMC waste fleet into a passive pavement survey. Onboard vision
@@ -135,6 +135,14 @@ export default function Login() {
             {busy ? <Loader2 size={15} className="spin" /> : <ArrowRight size={15} />}
             {busy ? 'Authenticating…' : 'Sign in'}
           </Button>
+
+          <Link
+            to="/report"
+            className="btn btn--ghost btn--sm"
+            style={{ justifyContent: 'center', gap: 7 }}
+          >
+            <Camera size={14} /> Report road damage without signing in
+          </Link>
 
           <div className="login__demo">
             <div className="eyebrow">Demo accounts · password {PASSWORD}</div>

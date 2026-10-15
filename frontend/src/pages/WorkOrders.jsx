@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { FileText, Printer, Search, Sparkles, TriangleAlert, Wrench } from 'lucide-react';
+import { CheckCircle2, FileText, Play, Printer, Search, Sparkles, TriangleAlert, Wrench } from 'lucide-react';
 import { dataApi } from '../lib/api.js';
 import { usePoll } from '../lib/hooks.js';
 import { GRADE_COLOR, inr, num, relTime } from '../lib/format.js';
@@ -18,17 +18,20 @@ const WARDS = [
 
 export default function WorkOrders() {
   const toast = useToast();
-  const { can, isExecutive } = useAuth();
+  const { can } = useAuth();
+  const canManage = can('workorders:manage');
+  const canUpdate = can('workorders:update');
 
   const [hotspotQuery, setHotspotQuery] = useState('');
   const [hotspotId, setHotspotId] = useState('');
   const [ward, setWard] = useState(WARDS[0]);
   const [busy, setBusy] = useState(false);
+  const [updatingId, setUpdatingId] = useState(null);
   const [draft, setDraft] = useState(null);
   const [viewing, setViewing] = useState(null);
 
   const { data: hotspots, loading: loadingHotspots } = usePoll(() => dataApi.hotspots('?sort=priority&limit=200'), 30000, []);
-  const { data: orders, loading: loadingOrders } = usePoll(() => dataApi.workOrders('?limit=60'), 20000, []);
+  const { data: orders, loading: loadingOrders, refresh: refreshOrders } = usePoll(() => dataApi.workOrders('?limit=60'), 20000, []);
 
   const rows = hotspots?.items || [];
 
@@ -53,14 +56,30 @@ export default function WorkOrders() {
       const wo = await dataApi.createWorkOrder(Number(hotspotId), ward);
       setDraft(wo);
       toast.success(`Work order #${wo.work_order_id} issued via ${wo.model}.`);
+      refreshOrders();
     } catch (e) {
       toast.error(
         e.status === 403
-          ? 'Issuing work orders is restricted to the Municipal Executive role.'
+          ? 'Issuing work orders is a field-officer action.'
           : e.message
       );
     } finally {
       setBusy(false);
+    }
+  };
+
+  const advance = async (row, status) => {
+    setUpdatingId(row.work_order_id);
+    try {
+      const updated = await dataApi.updateWorkOrder(row.work_order_id, status);
+      toast.success(`Work order #${row.work_order_id} marked ${status}.`);
+      setViewing((v) => (v && v.work_order_id === row.work_order_id ? { ...v, ...updated } : v));
+      setDraft((d) => (d && d.work_order_id === row.work_order_id ? { ...d, ...updated } : d));
+      refreshOrders();
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setUpdatingId(null);
     }
   };
 
@@ -151,13 +170,13 @@ export default function WorkOrders() {
               </div>
             )}
 
-            <Button variant="primary" icon={Sparkles} onClick={generate} disabled={busy || !isExecutive} block>
+            <Button variant="primary" icon={Sparkles} onClick={generate} disabled={busy || !canManage} block>
               {busy ? 'Generating dispatch…' : 'Generate work order'}
             </Button>
 
-            {!isExecutive && (
+            {!canManage && (
               <div style={{ fontSize: 11.5, color: 'var(--faint)' }}>
-                Only the Municipal Executive role can issue dispatches. Switch role in the top bar to try it.
+                Issuing dispatches is a field-officer action. You can monitor the register below.
               </div>
             )}
           </div>
@@ -242,8 +261,29 @@ export default function WorkOrders() {
                   </span>
                 ),
               },
-              { key: 'status', header: 'Status', render: (w) => <Badge tone={w.status === 'Issued' ? 'high' : 'neutral'}>{w.status}</Badge> },
+              { key: 'status', header: 'Status', render: (w) => <Badge tone={w.status === 'Completed' ? 'low' : w.status === 'Issued' ? 'high' : 'neutral'}>{w.status}</Badge> },
               { key: 'created_at', header: 'Issued', align: 'right', render: (w) => <span className="mono" style={{ fontSize: 11 }}>{relTime(w.created_at)}</span> },
+              {
+                key: 'actions',
+                header: '',
+                align: 'right',
+                render: (w) => {
+                  const closed = w.status === 'Completed' || w.status === 'Cancelled';
+                  if (!canUpdate || closed) return null;
+                  return (
+                    <div className="pill-row" style={{ justifyContent: 'flex-end' }} onClick={(e) => e.stopPropagation()}>
+                      {w.status !== 'In Progress' && (
+                        <Button size="sm" variant="ghost" icon={Play} disabled={updatingId === w.work_order_id} onClick={() => advance(w, 'In Progress')}>
+                          Start
+                        </Button>
+                      )}
+                      <Button size="sm" variant="primary" icon={CheckCircle2} disabled={updatingId === w.work_order_id} onClick={() => advance(w, 'Completed')}>
+                        Complete
+                      </Button>
+                    </div>
+                  );
+                },
+              },
             ]}
             rows={orders}
           />

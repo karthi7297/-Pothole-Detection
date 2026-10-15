@@ -25,7 +25,8 @@ export const JWT_SECRET = process.env.JWT_SECRET || 'roadpulse-dev-secret-change
 export const JWT_TTL = process.env.JWT_TTL || '12h';
 
 /* ---------- domain tuning (mirrors PRD section 4) ---------- */
-export const CONFIDENCE_GATE = 0.6;          // 4.1 filter gate — reject below this
+export const CONFIDENCE_GATE = 0.6;          // 4.1 filter gate — below this the frame is noise
+export const AUTO_VERIFY_CONFIDENCE = 0.85;  // at/above this a report is auto-accepted
 export const DEDUP_RADIUS_M = 5;             // 4.6 spatial deduplication radius
 export const DEDUP_WINDOW_H = 24;            // 4.6 same-vehicle dedup window
 export const HOTSPOT_MIN_OBSERVATIONS = 2;   // observations before a site becomes a hotspot
@@ -49,11 +50,28 @@ export const PCI_DEDUCTION = {
 
 export const DAMAGE_CLASSES = ['pothole', 'alligator_crack', 'longitudinal_crack'];
 
+/**
+ * Where a report came from. Citizens upload through the app; dashcams stream
+ * automatically from the fleet; the simulator replays the fleet stream for demos.
+ */
+export const REPORT_SOURCES = ['citizen', 'dashcam', 'simulator', 'edge', 'manual'];
+
+/** Verification states a report can hold. */
+export const REPORT_STATUSES = ['Pending', 'Verified', 'Rejected', 'Dispatched', 'Repaired'];
+
 /* ---------- integrations ---------- */
 export const OPENROUTER_KEY = process.env.OPENROUTER_KEY || '';
 export const LLM_MODEL =
   process.env.LLM_MODEL || 'nvidia/nemotron-3-super-120b-a12b:free';
 export const WEATHER_TIMEOUT_MS = Number(process.env.WEATHER_TIMEOUT_MS || 4500);
+
+/**
+ * Optional Mapbox token for reverse geocoding a report's coordinates into a
+ * place name. Without it the lookup still works — it falls back to the nearest
+ * road segment's street + zone, so a report always carries a location name.
+ */
+export const MAPBOX_TOKEN = process.env.MAPBOX_TOKEN || '';
+export const GEOCODE_TIMEOUT_MS = Number(process.env.GEOCODE_TIMEOUT_MS || 3500);
 
 /* ---------- fleet simulator (replaces the old fake frontend feed) ---------- */
 export const ENABLE_SIMULATOR = process.env.ENABLE_SIMULATOR !== 'false';

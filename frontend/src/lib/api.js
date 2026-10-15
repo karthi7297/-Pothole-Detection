@@ -6,6 +6,9 @@
  * - errors are normalised into `ApiError` with status + server message
  */
 
+/* RoadPulse API client. */
+
+/* API base */
 export const API_BASE = import.meta.env.VITE_API_URL || '';
 const TOKEN_KEY = 'roadpulse.token';
 const USER_KEY = 'roadpulse.user';
@@ -78,7 +81,7 @@ export const api = {
   patch: (path, body, opts) => request(path, { ...opts, method: 'PATCH', body }),
 };
 
-/* ------------------------------------------------------------------ auth -- */
+/* ---------------------------------------------------------------- auth -- */
 export const authApi = {
   login: (email, password) => request('/api/auth/login', { method: 'POST', body: { email, password } }),
   me: () => request('/api/auth/me'),
@@ -97,16 +100,47 @@ export const dataApi = {
   hotspots: (query = '') => request(`/api/hotspots${query}`),
   hotspot: (id) => request(`/api/hotspots/${id}`),
   updateHotspot: (id, body) => request(`/api/hotspots/${id}`, { method: 'PATCH', body }),
+  createHotspot: (body) => request('/api/hotspots', { method: 'POST', body }),
+  deleteHotspot: (id) => request(`/api/hotspots/${id}`, { method: 'DELETE' }),
 
   detections: (query = '') => request(`/api/detections${query}`),
+  pendingDetections: (query = '') => request(`/api/detections/pending${query}`),
+  reportsSummary: () => request('/api/reports/summary'),
+  /** Coordinates → human-readable place name. Public; works with no token. */
+  reverseGeocode: (lat, lon) =>
+    request(`/api/geo/reverse?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`),
+  /** Public report tracking — works with no token. */
+  trackReport: (id) => request(`/api/reports/track/${encodeURIComponent(id)}`),
   reviewDetection: (id, status) => request(`/api/detections/${id}`, { method: 'PATCH', body: { status } }),
 
   workOrders: (query = '') => request(`/api/work-orders${query}`),
   createWorkOrder: (hotspotId, ward) =>
     request('/api/work-orders', { method: 'POST', body: { hotspot_id: hotspotId, ward } }),
+  updateWorkOrder: (id, status) => request(`/api/work-orders/${id}`, { method: 'PATCH', body: { status } }),
+  approveWorkOrder: (id) => request(`/api/work-orders/${id}/approve`, { method: 'PATCH', body: {} }),
 
   weather: (lat = 11.0168, lon = 76.9558) => request(`/api/weather?lat=${lat}&lon=${lon}`),
   monsoon: () => request('/api/monsoon'),
+
+  uploadDetection: (formData, { signal } = {}) => {
+    const token = getToken();
+    const headers = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const url = token ? `${API_BASE}/api/detections/upload` : `${API_BASE}/api/detections/upload-anonymous`;
+    return fetch(url, { method: 'POST', headers, body: formData, signal })
+      .then(async (res) => {
+        if (!res.ok) {
+          let payload = null;
+          try { payload = await res.json(); } catch { /* non-JSON */ }
+          throw new ApiError(res.status, payload?.message || `${res.status} ${res.statusText}`, payload);
+        }
+        return res.json();
+      })
+      .catch((err) => {
+        if (err instanceof ApiError || err.name === 'AbortError') throw err;
+        throw new ApiError(0, 'Cannot reach the RoadPulse API. Is the backend running on :8080?', null);
+      });
+  },
 
   trend: (days = 30) => request(`/api/analytics/trend?days=${days}`),
   zones: () => request('/api/analytics/zones'),
@@ -116,6 +150,10 @@ export const dataApi = {
   fleetAnalytics: () => request('/api/analytics/fleet'),
 
   fleet: () => request('/api/fleet'),
+  fleetPositions: () => request('/api/fleet/positions'),
+  fleetGeofences: () => request('/api/fleet/geofences'),
+  /** Zone geofence polygons — shared by the report map. */
+  zoneGeofences: () => request('/api/fleet/geofences'),
   simulator: (action, intervalMs) =>
     request('/api/fleet/simulator', { method: 'POST', body: { action, ...(intervalMs ? { intervalMs } : {}) } }),
 
@@ -123,7 +161,7 @@ export const dataApi = {
   eventStatus: () => request('/api/events/status'),
 };
 
-/** Unwrap the `{ items, total }` envelope the list endpoints return. */
+/* Unwrap the `{ items, total }` envelope the list endpoints return. */
 export const itemsOf = (payload) => {
   if (Array.isArray(payload)) return payload;
   if (Array.isArray(payload?.items)) return payload.items;

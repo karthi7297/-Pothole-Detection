@@ -155,7 +155,7 @@ export default function Governance() {
         eyebrow={`${rows.length} entries`}
         actions={
           <div className="toolbar">
-            <div className="search" style={{ width: 200 }}>
+            <div className="search">
               <Search size={14} />
               <input className="input" placeholder="Search actor or detail…" value={q} onChange={(e) => setQ(e.target.value)} />
             </div>

@@ -112,7 +112,7 @@ export default function Network() {
         eyebrow={`${rows.length} of ${segments?.length || 0} shown`}
         actions={
           <div className="toolbar">
-            <div className="search" style={{ width: 210 }}>
+            <div className="search">
               <Search size={14} />
               <input className="input" placeholder="Search corridor…" value={q} onChange={(e) => setQ(e.target.value)} />
             </div>
@@ -150,7 +150,7 @@ export default function Network() {
                 header: 'PCI',
                 width: 210,
                 render: (s) => (
-                  <div style={{ display: 'grid', gap: 5, minWidth: 150 }}>
+                  <div style={{ display: 'grid', gap: 5, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 7 }}>
                       <b className="num" style={{ fontSize: 15 }}>{s.current_pci}</b>
                       <span style={{ fontSize: 11, color: 'var(--faint)' }}>/100</span>

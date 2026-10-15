@@ -46,6 +46,11 @@ export function computeMetrics() {
 
   const lastIngest = one('SELECT MAX(timestamp) AS ts FROM detections');
 
+  const statusCounts = { Pending: 0, Verified: 0, Rejected: 0, Dispatched: 0, Repaired: 0 };
+  for (const r of query('SELECT status, COUNT(*) AS c FROM detections GROUP BY status')) {
+    statusCounts[r.status] = r.c;
+  }
+
   return {
     avgPci,
     pciBand: pciBand(avgPci),
@@ -64,6 +69,11 @@ export function computeMetrics() {
     detections24h: detectionsLast24h(),
     detections7d: det7,
     detectionsTotal: total,
+    pendingReports: statusCounts.Pending,
+    verifiedReports: statusCounts.Verified,
+    rejectedReports: statusCounts.Rejected,
+    dispatchedReports: statusCounts.Dispatched,
+    repairedReports: statusCounts.Repaired,
     detectionTrendPct: det7prev > 0 ? Math.round(((det7 - det7prev) / det7prev) * 100) : null,
     gradeDistribution,
     lastIngestAt: lastIngest?.ts || null,

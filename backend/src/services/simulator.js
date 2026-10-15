@@ -1,4 +1,4 @@
-import { CONFIDENCE_GATE, SIMULATOR_INTERVAL_MS } from '../config.js';
+import { SIMULATOR_INTERVAL_MS } from '../config.js';
 import { query } from '../db.js';
 import { broadcast } from './events.js';
 import { IngestError, ingestDetection } from './ingest.js';
@@ -83,34 +83,42 @@ export function tick() {
   }
 
   const vehicle = FLEET[Math.floor(Math.random() * FLEET.length)];
-  // ~1 in 14 frames falls below the filter gate — proves the gate is enforced.
-  const belowGate = Math.random() < 0.07;
+
+  // ~65% automatic dashcam frames from a fleet vehicle, ~35% citizen app uploads.
+  const citizen = Math.random() < 0.35;
+  const source = citizen ? 'citizen' : 'dashcam';
+
+  // Dashcams are usually confident; hand-held citizen photos less so, which
+  // routes more of them to the field-officer queue.
+  const autoVerifyFloor = citizen ? 0.52 : 0.6;
+  const belowGate = Math.random() < (citizen ? 0.14 : 0.05);
   const confidence = belowGate
     ? Math.round((0.31 + Math.random() * 0.27) * 100) / 100
-    : Math.round((CONFIDENCE_GATE + Math.random() * 0.37) * 100) / 100;
+    : Math.round((autoVerifyFloor + Math.random() * (0.98 - autoVerifyFloor)) * 100) / 100;
 
   const input = {
-    vehicle_id: vehicle.id,
+    vehicle_id: citizen ? null : vehicle.id,
     latitude: Number(lat.toFixed(6)),
     longitude: Number(lon.toFixed(6)),
     damage_class: pickClass(),
     confidence,
     bbox_area_ratio: Math.round((0.03 + Math.random() * 0.15) * 1000) / 1000,
-    source: 'simulator',
+    source,
   };
 
   try {
     const result = ingestDetection(input, { user: null });
     state.emitted += 1;
     if (result.deduplicated) state.deduplicated += 1;
-    state.lastEvent = { at: new Date().toISOString(), vehicle_id: vehicle.id, ...result };
+    state.lastEvent = { at: new Date().toISOString(), vehicle_id: result.vehicle_id, ...result };
     return result;
   } catch (err) {
     if (err instanceof IngestError) {
       state.rejected += 1;
       const payload = {
         kind: 'rejected',
-        vehicle_id: vehicle.id,
+        vehicle_id: citizen ? 'CITIZEN-anon' : vehicle.id,
+        source,
         damage_class: input.damage_class,
         confidence: input.confidence,
         reason: err.code,

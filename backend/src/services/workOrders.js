@@ -47,27 +47,47 @@ export function offlineWorkOrder(hotspot, ward) {
   ].join('\n');
 }
 
+/**
+ * The LLM rewrite is strictly best-effort. The offline municipal template is a
+ * complete, formal dispatch on its own, so the network call is capped at a few
+ * seconds and disabled for the rest of the process after the first failure —
+ * an unreachable provider must never make the operator wait.
+ */
+const LLM_TIMEOUT_MS = 6000;
+let llmUnavailable = false;
+
 async function callLlm(prompt) {
-  if (!OPENROUTER_KEY) return null;
+  if (!OPENROUTER_KEY || llmUnavailable) return null;
+
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), LLM_TIMEOUT_MS);
+  const hardStop = new Promise((resolve) => setTimeout(() => resolve(null), LLM_TIMEOUT_MS + 750));
+
   try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 12_000);
-    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${OPENROUTER_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: LLM_MODEL,
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 700,
-      }),
-      signal: ctrl.signal,
-    });
-    clearTimeout(timer);
-    if (!res.ok) return null;
-    const json = await res.json();
-    return json.choices?.[0]?.message?.content?.trim() || null;
+    const work = (async () => {
+      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${OPENROUTER_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: LLM_MODEL,
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: 700,
+        }),
+        signal: ctrl.signal,
+      });
+      if (!res.ok) return null;
+      const json = await res.json();
+      return json.choices?.[0]?.message?.content?.trim() || null;
+    })();
+
+    const text = await Promise.race([work, hardStop]);
+    if (!text) llmUnavailable = true; // don't retry a provider that just failed
+    return text;
   } catch {
+    llmUnavailable = true;
     return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -134,9 +154,12 @@ export async function generateWorkOrder({ hotspot, ward = 'CMC Ward 32 Office', 
     hotspot_id: hotspot.hotspot_id,
     summary_text: text,
     model,
+    status: 'Issued',
     priority_level: gradeOf(hotspot.priority_score),
     asphalt_required_tons: tons,
+    estimated_budget_inr: hotspot.estimated_reconstruct_cost_inr || reconstructionCost(hotspot.road_type),
     assigned_ward_office: ward,
+    created_at: new Date().toISOString().slice(0, 19).replace('T', ' '),
   };
 }
 

@@ -1,61 +1,102 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
-  Activity, BarChart3, ChevronDown, ClipboardCheck, CloudRain, FileText, LayoutDashboard,
+  Activity, Camera, ChevronDown, ClipboardCheck, CloudRain, FileText, Inbox, LayoutDashboard,
   LogOut, MapPin, Menu, Radio, Route, ShieldAlert, Truck, X,
 } from 'lucide-react';
-import { DEMO_ACCOUNTS, ROLE_LABEL, useAuth } from '../state/AuthContext.jsx';
+import { ROLE_LABEL, useAuth } from '../state/AuthContext.jsx';
 import { useLiveFeed } from '../lib/hooks.js';
-import { Button, useToast } from './ui.jsx';
+import { Button } from './ui.jsx';
 import { initials } from '../lib/format.js';
 
-/* ------------------------------------------------------------------ nav -- */
-const NAV = [
-  {
-    label: 'Operations',
-    items: [
-      { to: '/', label: 'City Overview', icon: LayoutDashboard, cap: 'analytics:read', end: true },
-      { to: '/map', label: 'Map Operations', icon: MapPin, cap: 'map:read' },
-      { to: '/triage', label: 'Triage Queue', icon: ClipboardCheck, cap: 'hotspots:read', badgeKey: 'critical' },
-    ],
-  },
-  {
-    label: 'Maintenance',
-    items: [
-      { to: '/work-orders', label: 'Work Orders', icon: FileText, cap: 'workorders:read' },
-      { to: '/monsoon', label: 'Monsoon Watch', icon: CloudRain, cap: 'monsoon:read', badgeKey: 'monsoon' },
-    ],
-  },
-  {
-    label: 'Network',
-    items: [
-      { to: '/network', label: 'Corridor Health', icon: Route, cap: 'map:read' },
-      { to: '/fleet', label: 'Fleet & Ingestion', icon: Truck, cap: 'fleet:read' },
-    ],
-  },
-  {
-    label: 'Administration',
-    items: [{ to: '/governance', label: 'Governance', icon: ShieldAlert, cap: 'audit:read' }],
-  },
-];
+/* ------------------------------------------------------------------ nav -- *
+ * Each role gets its OWN menu — not one shared menu filtered by permission.
+ * The flow: a citizen reports → the field officer works the report to the end
+ * → the executive monitors the city. Roles therefore see different tools.
+ */
+const ROLE_NAV = {
+  // Citizen / driver: report damage, follow your own reports.
+  driver: [
+    {
+      label: 'Citizen',
+      items: [
+        { to: '/report', label: 'Report Road Damage', icon: Camera },
+        { to: '/my-reports', label: 'My Reports', icon: FileText },
+      ],
+    },
+    {
+      label: 'Explore',
+      items: [{ to: '/map', label: 'Live Road Map', icon: MapPin }],
+    },
+  ],
+  // Field inspector: the work queue, worked from report to repair.
+  inspector: [
+    {
+      label: 'Work Queue',
+      items: [
+        { to: '/reports', label: 'Report Inbox', icon: Inbox, badgeKey: 'pending' },
+        { to: '/triage', label: 'Triage Queue', icon: ClipboardCheck, badgeKey: 'critical' },
+        { to: '/work-orders', label: 'Work Orders', icon: FileText, badgeKey: 'workorders' },
+      ],
+    },
+    {
+      label: 'Field',
+      items: [
+        { to: '/map', label: 'Map Operations', icon: MapPin },
+        { to: '/monsoon', label: 'Monsoon Watch', icon: CloudRain, badgeKey: 'monsoon' },
+        { to: '/fleet', label: 'Fleet & Ingestion', icon: Truck },
+      ],
+    },
+  ],
+  // Municipal executive: oversight only — no action buttons anywhere.
+  executive: [
+    {
+      label: 'Oversight',
+      items: [
+        { to: '/overview', label: 'City Overview', icon: LayoutDashboard },
+        { to: '/network', label: 'Corridor Health', icon: Route },
+        { to: '/map', label: 'City Map', icon: MapPin },
+        { to: '/monsoon', label: 'Monsoon Watch', icon: CloudRain, badgeKey: 'monsoon' },
+        { to: '/fleet', label: 'Fleet & Ingestion', icon: Truck },
+      ],
+    },
+    {
+      label: 'Accountability',
+      items: [
+        { to: '/work-orders', label: 'Work Orders', icon: FileText },
+        { to: '/governance', label: 'Governance & Audit', icon: ShieldAlert },
+      ],
+    },
+  ],
+};
 
 const TITLES = {
-  '/': { eyebrow: 'Coimbatore Municipal Corporation', title: 'City Overview' },
+  '/': { eyebrow: 'Coimbatore Municipal Corporation', title: 'Dashboard' },
+  '/overview': { eyebrow: 'Oversight', title: 'City Overview' },
+  '/report': { eyebrow: 'Field reporting', title: 'Report Road Damage' },
+  '/my-reports': { eyebrow: 'Citizen tracking', title: 'My Reports' },
+  '/reports': { eyebrow: 'Verification', title: 'Report Inbox' },
   '/map': { eyebrow: 'Geospatial', title: 'Map Operations' },
   '/triage': { eyebrow: 'Verification', title: 'Triage Queue' },
   '/work-orders': { eyebrow: 'Dispatch', title: 'Work Orders' },
   '/monsoon': { eyebrow: 'Predictive maintenance', title: 'Monsoon Watch' },
   '/network': { eyebrow: 'Asset condition', title: 'Corridor Health' },
   '/fleet': { eyebrow: 'Passive ingestion', title: 'Fleet & Ingestion' },
-  '/governance': { eyebrow: 'Accountability', title: 'Governance' },
+  '/governance': { eyebrow: 'Accountability', title: 'Governance & Audit' },
 };
 
 /* --------------------------------------------------------------- sidebar -- */
 function Sidebar({ open, onClose, metrics }) {
-  const { can, user } = useAuth();
+  const { user } = useAuth();
+  const groups = ROLE_NAV[user?.role] || [];
 
   const counts = useMemo(
-    () => ({ critical: metrics?.criticalHotspots ?? null, monsoon: metrics?.monsoonHazards ?? null }),
+    () => ({
+      pending: metrics?.pendingReports ?? null,
+      critical: metrics?.criticalHotspots ?? null,
+      monsoon: metrics?.monsoonHazards ?? null,
+      workorders: metrics?.dispatchedReports ?? null,
+    }),
     [metrics]
   );
 
@@ -80,8 +121,8 @@ function Sidebar({ open, onClose, metrics }) {
       </div>
 
       <nav className="nav">
-        {NAV.map((group) => {
-          const items = group.items.filter((i) => can(i.cap));
+        {groups.map((group) => {
+          const items = group.items;
           if (!items.length) return null;
           return (
             <div className="nav__group" key={group.label}>
@@ -130,11 +171,9 @@ function Sidebar({ open, onClose, metrics }) {
 
 /* ---------------------------------------------------------------- topbar -- */
 function Topbar({ onMenu, metrics, live }) {
-  const { user, switchRole } = useAuth();
-  const toast = useToast();
+  const { user } = useAuth();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [switching, setSwitching] = useState('');
   const wrapRef = useRef(null);
 
   const meta = TITLES[location.pathname] || { eyebrow: 'RoadPulse', title: 'Console' };
@@ -147,22 +186,9 @@ function Topbar({ onMenu, metrics, live }) {
     return () => document.removeEventListener('mousedown', onDoc);
   }, []);
 
-  const changeRole = async (role) => {
-    if (role === user?.role || switching) return;
-    setSwitching(role);
-    try {
-      await switchRole(role);
-      toast.success(`Switched to ${ROLE_LABEL[role]} — permissions updated.`);
-    } catch (err) {
-      toast.error(`Could not switch role: ${err.message}`);
-    } finally {
-      setSwitching('');
-    }
-  };
-
   return (
     <header className="topbar">
-      <Button variant="ghost" size="sm" onClick={onMenu} className="no-print" aria-label="Open navigation" style={{ display: 'none' }} data-mobile-only>
+      <Button variant="ghost" size="sm" onClick={onMenu} className="topbar__menu no-print" aria-label="Open navigation">
         <Menu size={18} />
       </Button>
 
@@ -177,22 +203,13 @@ function Topbar({ onMenu, metrics, live }) {
 
       <span className={`live ${live.connected ? 'is-live' : 'is-off'}`} title={live.connected ? 'Streaming fleet telemetry' : 'Stream idle'}>
         <span className="live__dot" />
-        {live.connected ? 'Live' : 'Idle'}
+        <span className="live__label">{live.connected ? 'Live' : 'Idle'}</span>
       </span>
 
-      <div className="seg no-print" role="group" aria-label="Active role">
-        {DEMO_ACCOUNTS.map((a) => (
-          <button
-            key={a.role}
-            className={user?.role === a.role ? 'is-on' : ''}
-            onClick={() => changeRole(a.role)}
-            disabled={!!switching}
-            title={a.scope}
-          >
-            {switching === a.role ? '…' : ROLE_LABEL[a.role].replace('Municipal ', '').replace('Field ', '').replace('Fleet ', '')}
-          </button>
-        ))}
-      </div>
+      <span className="badge badge--brand no-print topbar__role" title="Your signed-in role. Sign out to use a different role.">
+        <span className="badge__dot" />
+        {ROLE_LABEL[user?.role] || user?.role || 'signed in'}
+      </span>
 
       <div style={{ position: 'relative' }} ref={wrapRef}>
         <button className="userchip no-print" onClick={() => setMenuOpen((v) => !v)} aria-expanded={menuOpen}>
@@ -201,7 +218,7 @@ function Topbar({ onMenu, metrics, live }) {
             <span className="userchip__name">{user?.name || 'Signed in'}</span>
             <span className="userchip__role">{user?.role || ''}</span>
           </span>
-          <ChevronDown size={14} style={{ color: 'var(--faint)' }} />
+          <ChevronDown className="userchip__chev" size={14} style={{ color: 'var(--faint)' }} />
         </button>
 
         {menuOpen && (
@@ -253,46 +270,49 @@ function LogoutItem() {
 export default function AppShell({ children, metrics }) {
   const [navOpen, setNavOpen] = useState(false);
   const live = useLiveFeed({ limit: 1, enabled: true });
+  const location = useLocation();
 
   useEffect(() => {
-    // Reveal the hamburger only on small screens.
-    const mq = window.matchMedia('(max-width: 980px)');
-    const apply = () => {
-      document.querySelectorAll('[data-mobile-only]').forEach((el) => {
-        el.style.display = mq.matches ? 'inline-flex' : 'none';
-      });
-    };
-    apply();
-    mq.addEventListener('change', apply);
-    return () => mq.removeEventListener('change', apply);
+    setNavOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 981px)');
+    const close = () => { if (mq.matches) setNavOpen(false); };
+    mq.addEventListener('change', close);
+    return () => mq.removeEventListener('change', close);
   }, []);
+
+  useEffect(() => {
+    if (!navOpen) return undefined;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKey = (event) => {
+      if (event.key === 'Escape') setNavOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = previous;
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [navOpen]);
 
   return (
     <div className="app">
+      {navOpen && (
+        <button type="button" className="nav-scrim" aria-label="Close navigation" onClick={() => setNavOpen(false)} />
+      )}
       <Sidebar open={navOpen} onClose={() => setNavOpen(false)} metrics={metrics} />
       <div className="main">
         <Topbar onMenu={() => setNavOpen((v) => !v)} metrics={metrics} live={live} />
         <main className="content rise">{children}</main>
-        <footer
-          className="no-print"
-          style={{
-            padding: '14px 22px 26px',
-            fontSize: 11.5,
-            color: 'var(--faint)',
-            display: 'flex',
-            gap: 14,
-            flexWrap: 'wrap',
-            alignItems: 'center',
-          }}
-        >
+        <footer className="app-foot no-print">
           <span className="mono">RoadPulse Coimbatore v3.0</span>
-          <span>·</span>
-          <span>Passive fleet ingestion · DBSCAN chronic-defect detection · IRC:82 PCI</span>
-          <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <span className="app-foot__detail">Passive fleet ingestion · DBSCAN chronic-defect detection · IRC:82 PCI</span>
+          <span className="app-foot__live">
             <Radio size={12} />
             {live.connected ? 'Telemetry stream connected' : 'Telemetry stream idle'}
           </span>
-          <BarChart3 size={12} />
         </footer>
       </div>
     </div>

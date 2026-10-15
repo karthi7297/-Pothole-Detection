@@ -222,7 +222,11 @@ export function Table({ columns, rows, empty, onRowClick, rowKey }) {
               onClick={onRowClick ? () => onRowClick(row) : undefined}
             >
               {columns.map((c) => (
-                <td key={c.key} className={c.align === 'right' ? 'num' : ''}>
+                <td
+                  key={c.key}
+                  data-label={c.header || ''}
+                  className={[c.align === 'right' ? 'num' : '', c.header ? '' : 'td-actions'].filter(Boolean).join(' ') || undefined}
+                >
                   {c.render ? c.render(row) : row[c.key]}
                 </td>
               ))}
@@ -276,7 +280,7 @@ export function Drawer({ open, onClose, title, eyebrow, actions, children, foote
             {eyebrow && <div className="eyebrow">{eyebrow}</div>}
             <h2 style={{ fontSize: 17 }}>{title}</h2>
           </div>
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
+          <div className="drawer__tools">
             {actions}
             <Button variant="ghost" size="sm" onClick={onClose} aria-label="Close panel">
               <X size={16} />

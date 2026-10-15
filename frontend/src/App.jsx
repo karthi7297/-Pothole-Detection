@@ -5,7 +5,11 @@ import AppShell from './components/AppShell.jsx';
 import { usePoll } from './lib/hooks.js';
 import { dataApi } from './lib/api.js';
 import Login from './pages/Login.jsx';
+import PublicReport from './pages/PublicReport.jsx';
 import Overview from './pages/Overview.jsx';
+import Report from './pages/Report.jsx';
+import MyReports from './pages/MyReports.jsx';
+import Reports from './pages/Reports.jsx';
 import MapOps from './pages/MapOps.jsx';
 import Triage from './pages/Triage.jsx';
 import WorkOrders from './pages/WorkOrders.jsx';
@@ -18,7 +22,7 @@ import { SkeletonRows } from './components/ui.jsx';
 function Booting() {
   return (
     <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center' }}>
-      <div style={{ width: 320, display: 'grid', gap: 12 }}>
+      <div style={{ width: 'min(320px, calc(100% - 32px))', display: 'grid', gap: 12 }}>
         <div className="eyebrow" style={{ textAlign: 'center' }}>RoadPulse · establishing session</div>
         <SkeletonRows rows={3} />
       </div>
@@ -37,8 +41,8 @@ function Guard({ capability, children }) {
           <div className="empty">
             <b>Not available for your role</b>
             <span>
-              This workspace needs the <code className="mono">{capability}</code> permission. Switch role from the
-              top bar, or sign in with an account that has it.
+              This workspace needs the <code className="mono">{capability}</code> permission. Sign out and sign
+              in with an account that has it.
             </span>
             <span className="mono" style={{ fontSize: 11, color: 'var(--faint)' }}>{location.pathname}</span>
           </div>
@@ -47,6 +51,39 @@ function Guard({ capability, children }) {
     );
   }
   return children;
+}
+
+/** Blocks a route unless the signed-in role is one of `roles`. */
+function RoleGuard({ roles, children }) {
+  const { user } = useAuth();
+  if (!roles.includes(user?.role)) {
+    return (
+      <div className="card">
+        <div className="card__body">
+          <div className="empty">
+            <b>Not available for your role</b>
+            <span>This workspace belongs to the {roles.join(' / ')} role.</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  return children;
+}
+
+/**
+ * Each role lands on its own dashboard — there is no cross-role switching:
+ * a citizen reports, a field officer works the queue, an executive monitors.
+ */
+export function homeFor(role) {
+  if (role === 'inspector') return '/reports';
+  if (role === 'driver') return '/report';
+  return '/overview';
+}
+
+function HomeRedirect() {
+  const { user } = useAuth();
+  return <Navigate to={homeFor(user?.role)} replace />;
 }
 
 export default function App() {
@@ -60,10 +97,13 @@ export default function App() {
   );
 
   if (status === 'loading') return <Booting />;
+
+  // Anonymous visitors can still file a report and track one — no login needed.
   if (status === 'anon' || !user) {
     return (
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/report" element={<PublicReport />} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     );
@@ -72,11 +112,36 @@ export default function App() {
   return (
     <AppShell metrics={metrics}>
       <Routes>
+        <Route path="/" element={<HomeRedirect />} />
         <Route
-          path="/"
+          path="/overview"
           element={
             <Guard capability="analytics:read">
               <Overview />
+            </Guard>
+          }
+        />
+        <Route
+          path="/report"
+          element={
+            <Guard capability="detections:ingest">
+              <Report />
+            </Guard>
+          }
+        />
+        <Route
+          path="/my-reports"
+          element={
+            <RoleGuard roles={['driver']}>
+              <MyReports />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/reports"
+          element={
+            <Guard capability="detections:review">
+              <Reports />
             </Guard>
           }
         />
@@ -137,7 +202,7 @@ export default function App() {
           }
         />
         <Route path="/login" element={<Navigate to="/" replace />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<HomeRedirect />} />
       </Routes>
     </AppShell>
   );
