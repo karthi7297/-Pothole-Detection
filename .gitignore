@@ -10,6 +10,10 @@ backend/.env
 frontend/.env
 # db (local sqlite — recreate with npm run seed)
 backend/roadpulse.db
+backend/roadpulse.db-wal
+backend/roadpulse.db-shm
+*.db-wal
+*.db-shm
 # user uploads (photos / dashcam clips)
 backend/uploads/
 uploads/

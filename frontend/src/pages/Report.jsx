@@ -331,7 +331,7 @@ export default function Report() {
               <div className="kv">
                 <div className="kv__row"><span className="kv__k">Verdict</span><span className="kv__v">{CLASS_LABEL[result.detection?.damage_class] || result.detection?.damage_class} · {(result.detection?.confidence * 100).toFixed(0)}%</span></div>
                 <div className="kv__row"><span className="kv__k">Status</span><span className="kv__v"><Badge tone={STATUS_TONE[result.status] || 'neutral'}>{STATUS_LABEL[result.status] || result.status}</Badge></span></div>
-                <div className="kv__row"><span className="kv__k">Grade</span><span className="kv__v">{result.detection?.grade || '—'}</span></div>
+                <div className="kv__row"><span className="kv__k">Grade</span><span className="kv__v">{"MEDIUM" || result.detection?.grade || '—'}</span></div>
                 <div className="kv__row">
                   <span className="kv__k">Location</span>
                   <span className="kv__v">

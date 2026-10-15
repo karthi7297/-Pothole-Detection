@@ -19,6 +19,13 @@ export default defineConfig({
           });
         },
       },
+      // Citizen/fleet uploads are served by the API as /uploads/<file>.
+      // Without this the browser asks Vite for them and gets a 404, so the
+      // uploaded photo never appears in the inspector's Report Inbox.
+      '/uploads': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
     },
   },
   build: { outDir: 'dist', sourcemap: false },
