@@ -159,6 +159,11 @@ export const dataApi = {
 
   audit: (limit = 60) => request(`/api/audit?limit=${limit}`),
   eventStatus: () => request('/api/events/status'),
+
+  /** Inspector-only, page-aware assistant. */
+  assistantIntro: (page) => request(`/api/assistant/intro?page=${encodeURIComponent(page || '')}`),
+  assistantChat: (message, page, history) =>
+    request('/api/assistant/chat', { method: 'POST', body: { message, page, history } }),
 };
 
 /* Unwrap the `{ items, total }` envelope the list endpoints return. */

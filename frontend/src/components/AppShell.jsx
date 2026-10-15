@@ -7,6 +7,7 @@ import {
 import { ROLE_LABEL, useAuth } from '../state/AuthContext.jsx';
 import { useLiveFeed } from '../lib/hooks.js';
 import { Button } from './ui.jsx';
+import Assistant from './Assistant.jsx';
 import { initials } from '../lib/format.js';
 
 /* ------------------------------------------------------------------ nav -- *
@@ -315,6 +316,7 @@ export default function AppShell({ children, metrics }) {
           </span>
         </footer>
       </div>
+      <Assistant />
     </div>
   );
 }

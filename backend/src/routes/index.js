@@ -12,6 +12,7 @@ import workOrderRoutes from './workOrders.js';
 import uploadRoutes from './uploads.js';
 import reportRoutes from './reports.js';
 import geoRoutes from './geo.js';
+import assistantRoutes from './assistant.js';
 import { ENABLE_SIMULATOR } from '../config.js';
 import { status } from '../services/simulator.js';
 
@@ -48,5 +49,6 @@ router.use(detectionRoutes);   // /detections, /reports/summary
 router.use(workOrderRoutes);   // /work-orders
 router.use(weatherRoutes);     // /weather, /monsoon
 router.use(fleetRoutes);       // /fleet
+router.use(assistantRoutes);   // /assistant/* (inspector-only)
 
 export default router;
