@@ -2,6 +2,9 @@
 node_modules/
 # builds
 dist/
+dist*/
+# render-check screenshots
+.workbuddy-ai/shots/
 # env (real secrets — never commit)
 backend/.env
 frontend/.env

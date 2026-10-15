@@ -107,7 +107,7 @@ export default function Reports() {
               <Inbox size={14} />
               <input
                 className="input"
-                placeholder="Search id, street, zone or reporter…"
+                placeholder="Search id, location, zone or reporter…"
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
               />

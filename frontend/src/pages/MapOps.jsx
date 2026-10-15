@@ -318,7 +318,7 @@ export default function MapOps() {
               <Search size={14} />
               <input
                 className="input"
-                placeholder="Search street or zone…"
+                placeholder="Search location, street or zone…"
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
               />
