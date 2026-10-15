@@ -1,0 +1,11 @@
+# deps
+node_modules/
+# builds
+dist/
+# env (real secrets — never commit)
+backend/.env
+frontend/.env
+# db (local sqlite — recreate with npm run seed)
+backend/roadpulse.db
+# logs
+*.log
